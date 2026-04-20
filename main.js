@@ -70,13 +70,17 @@ function startAR(planets) {
   const loader = new THREE.TextureLoader();
   const meshes = [];
 
-  // Lay out selected planets with even spacing
-  const spacing = 0.4;
+  // Scale planets up when viewing fewer — keeps them prominent
+  const isFullSystem = planets.length === planetsData.length;
+  const minDisplay = 0.12; // minimum visible radius for non-Sun planets
+  const scale = isFullSystem ? 1 : Math.min(4, 10 / planets.length);
+  const spacing = isFullSystem ? 0.4 : 0.5 * scale;
   const totalWidth = (planets.length - 1) * spacing;
   const startX = -totalWidth / 2;
 
   planets.forEach((p, i) => {
-    const geo = new THREE.SphereGeometry(p.radius, 32, 32);
+    const r = isFullSystem ? p.radius : Math.max(p.radius * scale, minDisplay);
+    const geo = new THREE.SphereGeometry(r, 32, 32);
     const tex = loader.load(`./assets/${p.texture}`);
     const mat = p.emissive
       ? new THREE.MeshBasicMaterial({ map: tex })
@@ -87,8 +91,8 @@ function startAR(planets) {
     meshes.push({ mesh, speed: p.speed });
 
     if (p.ring) {
-      const innerR = p.radius * 1.3;
-      const outerR = p.radius * 2.2;
+      const innerR = r * 1.3;
+      const outerR = r * 2.2;
       const ringGeo = new THREE.RingGeometry(innerR, outerR, 64);
       const ringTex = loader.load(`./assets/${p.ring}`);
       const ringMat = new THREE.MeshBasicMaterial({
