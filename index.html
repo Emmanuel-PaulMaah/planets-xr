@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Planets XR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0b0d17; color: #fff; overflow-x: hidden; }
+    canvas { display: block; }
+
+    #menu {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    #menu h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+    #menu p.sub { color: #aaa; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+    .planet-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 0.75rem;
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 1.5rem;
+    }
+
+    .planet-btn {
+      background: #1a1d2e;
+      border: 2px solid #333;
+      border-radius: 12px;
+      padding: 0.9rem 0.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      color: #ccc;
+      font-size: 0.95rem;
+    }
+    .planet-btn.selected {
+      border-color: #4ea8ff;
+      background: #162a45;
+      color: #fff;
+    }
+    .planet-btn:hover { border-color: #5570a0; }
+
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.2rem;
+    }
+    .actions button {
+      background: none;
+      border: 1px solid #555;
+      color: #aaa;
+      padding: 0.4rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .actions button:hover { border-color: #888; color: #fff; }
+
+    #launch-btn {
+      background: #1a6eff;
+      border: none;
+      color: #fff;
+      padding: 0.8rem 2.5rem;
+      border-radius: 8px;
+      font-size: 1.05rem;
+      cursor: pointer;
+    }
+    #launch-btn:disabled { opacity: 0.35; cursor: default; }
+    #launch-btn:not(:disabled):hover { background: #3580ff; }
+  </style>
+</head>
+<body>
+
+  <!-- Planet selection menu -->
+  <div id="menu">
+    <h1>🪐 Planets XR</h1>
+    <p class="sub">Select the planets you want to view in AR</p>
+
+    <div class="planet-grid" id="planet-grid"></div>
+
+    <div class="actions">
+      <button id="select-all">Select All</button>
+      <button id="select-none">Clear</button>
+    </div>
+
+    <button id="launch-btn" disabled>Enter AR</button>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
