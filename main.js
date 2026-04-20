@@ -148,29 +148,55 @@ function startAR(planets) {
     }
   });
 
-  // Fallback: screen tap outside of XR (non-immersive / desktop preview)
-  function onScreenTap(e) {
-    if (renderer.xr.isPresenting) return; // handled by controller in AR
-    const touch = new THREE.Vector2();
+  // Drag-to-move planets on preview screen (touch + mouse)
+  let dragTarget = null;
+  let dragDepth = 0;
+  const pointer = new THREE.Vector2();
+  const dragPlane = new THREE.Plane();
+  const intersection = new THREE.Vector3();
+
+  function getPointer(e) {
     const x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
     const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-    touch.x = (x / window.innerWidth) * 2 - 1;
-    touch.y = -(y / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(touch, camera);
+    pointer.x = (x / window.innerWidth) * 2 - 1;
+    pointer.y = -(y / window.innerHeight) * 2 + 1;
+  }
+
+  function onPointerDown(e) {
+    if (renderer.xr.isPresenting) return;
+    getPointer(e);
+    raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(allMeshes);
     if (hits.length > 0) {
-      const hit = hits[0].object;
-      if (scaledUp.has(hit)) {
-        hit.scale.set(1, 1, 1);
-        scaledUp.delete(hit);
-      } else {
-        scaledUp.add(hit);
-        hit.scale.set(scaleTarget, scaleTarget, scaleTarget);
-      }
+      dragTarget = hits[0].object;
+      // Create a plane facing the camera at the planet's depth
+      dragPlane.setFromNormalAndCoplanarPoint(
+        camera.getWorldDirection(new THREE.Vector3()).negate(),
+        dragTarget.position
+      );
     }
   }
-  renderer.domElement.addEventListener('touchstart', onScreenTap, { passive: true });
-  renderer.domElement.addEventListener('click', onScreenTap);
+
+  function onPointerMove(e) {
+    if (!dragTarget || renderer.xr.isPresenting) return;
+    e.preventDefault();
+    getPointer(e);
+    raycaster.setFromCamera(pointer, camera);
+    if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
+      dragTarget.position.copy(intersection);
+    }
+  }
+
+  function onPointerUp() {
+    dragTarget = null;
+  }
+
+  renderer.domElement.addEventListener('touchstart', onPointerDown, { passive: true });
+  renderer.domElement.addEventListener('touchmove', onPointerMove, { passive: false });
+  renderer.domElement.addEventListener('touchend', onPointerUp);
+  renderer.domElement.addEventListener('mousedown', onPointerDown);
+  renderer.domElement.addEventListener('mousemove', onPointerMove);
+  renderer.domElement.addEventListener('mouseup', onPointerUp);
 
   renderer.setAnimationLoop(() => {
     meshes.forEach(({ mesh, speed }) => { mesh.rotation.y += speed; });
