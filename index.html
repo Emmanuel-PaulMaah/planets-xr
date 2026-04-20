@@ -73,9 +73,31 @@
     }
     #launch-btn:disabled { opacity: 0.35; cursor: default; }
     #launch-btn:not(:disabled):hover { background: #3580ff; }
+
+    #back-btn {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid #555;
+      color: #fff;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      font-size: 1.3rem;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    #back-btn:hover { background: rgba(255, 255, 255, 0.15); }
   </style>
 </head>
 <body>
+
+  <button id="back-btn" aria-label="Back to menu">←</button>
 
   <!-- Planet selection menu -->
   <div id="menu">

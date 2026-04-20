@@ -50,9 +50,19 @@ document.getElementById('select-none').addEventListener('click', () => {
 });
 
 // --- AR launch ---
+const backBtn = document.getElementById('back-btn');
+let cleanup = null;
+
 launchBtn.addEventListener('click', () => {
   document.getElementById('menu').style.display = 'none';
-  startAR(planetsData.filter((p) => selected.has(p.name)));
+  backBtn.style.display = 'flex';
+  cleanup = startAR(planetsData.filter((p) => selected.has(p.name)));
+});
+
+backBtn.addEventListener('click', () => {
+  if (cleanup) { cleanup(); cleanup = null; }
+  backBtn.style.display = 'none';
+  document.getElementById('menu').style.display = '';
 });
 
 function startAR(planets) {
@@ -62,7 +72,8 @@ function startAR(planets) {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
-  document.body.appendChild(ARButton.createButton(renderer));
+  const arButton = ARButton.createButton(renderer);
+  document.body.appendChild(arButton);
 
   const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
   scene.add(light);
@@ -166,9 +177,19 @@ function startAR(planets) {
     renderer.render(scene, camera);
   });
 
-  window.addEventListener('resize', () => {
+  function onResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  }
+  window.addEventListener('resize', onResize);
+
+  // Return cleanup function for back navigation
+  return () => {
+    renderer.setAnimationLoop(null);
+    renderer.dispose();
+    renderer.domElement.remove();
+    arButton.remove();
+    window.removeEventListener('resize', onResize);
+  };
 }
