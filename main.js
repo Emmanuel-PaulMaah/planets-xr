@@ -107,6 +107,37 @@ function startAR(planets) {
     }
   });
 
+  // Touch-to-scale: tap a planet to enlarge it, tap again to shrink back
+  const raycaster = new THREE.Raycaster();
+  const touch = new THREE.Vector2();
+  const scaledUp = new Set();
+  const scaleTarget = 2.0;
+
+  function onTap(e) {
+    const x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    touch.x = (x / window.innerWidth) * 2 - 1;
+    touch.y = -(y / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(touch, camera);
+    const allMeshes = meshes.map((m) => m.mesh);
+    const hits = raycaster.intersectObjects(allMeshes);
+
+    if (hits.length > 0) {
+      const hit = hits[0].object;
+      if (scaledUp.has(hit)) {
+        hit.scale.set(1, 1, 1);
+        scaledUp.delete(hit);
+      } else {
+        scaledUp.add(hit);
+        hit.scale.set(scaleTarget, scaleTarget, scaleTarget);
+      }
+    }
+  }
+
+  renderer.domElement.addEventListener('touchstart', onTap, { passive: true });
+  renderer.domElement.addEventListener('click', onTap);
+
   renderer.setAnimationLoop(() => {
     meshes.forEach(({ mesh, speed }) => { mesh.rotation.y += speed; });
     renderer.render(scene, camera);
