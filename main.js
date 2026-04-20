@@ -107,22 +107,46 @@ function startAR(planets) {
     }
   });
 
-  // Touch-to-scale: tap a planet to enlarge it, tap again to shrink back
+  // Touch-to-scale in live AR: use XR controller 'select' event
   const raycaster = new THREE.Raycaster();
-  const touch = new THREE.Vector2();
   const scaledUp = new Set();
   const scaleTarget = 2.0;
+  const allMeshes = meshes.map((m) => m.mesh);
 
-  function onTap(e) {
+  // XR controller for in-session taps
+  const controller = renderer.xr.getController(0);
+  scene.add(controller);
+
+  controller.addEventListener('select', () => {
+    // Controller ray: origin at controller position, direction forward (-Z in controller space)
+    const tempMatrix = new THREE.Matrix4();
+    tempMatrix.identity().extractRotation(controller.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+    const hits = raycaster.intersectObjects(allMeshes);
+    if (hits.length > 0) {
+      const hit = hits[0].object;
+      if (scaledUp.has(hit)) {
+        hit.scale.set(1, 1, 1);
+        scaledUp.delete(hit);
+      } else {
+        scaledUp.add(hit);
+        hit.scale.set(scaleTarget, scaleTarget, scaleTarget);
+      }
+    }
+  });
+
+  // Fallback: screen tap outside of XR (non-immersive / desktop preview)
+  function onScreenTap(e) {
+    if (renderer.xr.isPresenting) return; // handled by controller in AR
+    const touch = new THREE.Vector2();
     const x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
     const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
     touch.x = (x / window.innerWidth) * 2 - 1;
     touch.y = -(y / window.innerHeight) * 2 + 1;
-
     raycaster.setFromCamera(touch, camera);
-    const allMeshes = meshes.map((m) => m.mesh);
     const hits = raycaster.intersectObjects(allMeshes);
-
     if (hits.length > 0) {
       const hit = hits[0].object;
       if (scaledUp.has(hit)) {
@@ -134,9 +158,8 @@ function startAR(planets) {
       }
     }
   }
-
-  renderer.domElement.addEventListener('touchstart', onTap, { passive: true });
-  renderer.domElement.addEventListener('click', onTap);
+  renderer.domElement.addEventListener('touchstart', onScreenTap, { passive: true });
+  renderer.domElement.addEventListener('click', onScreenTap);
 
   renderer.setAnimationLoop(() => {
     meshes.forEach(({ mesh, speed }) => { mesh.rotation.y += speed; });
