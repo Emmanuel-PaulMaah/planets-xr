@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8">
   <title>Planets XR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', sans-serif; background: #0b0d17; color: #fff; overflow-x: hidden; }
@@ -74,10 +77,17 @@
     #launch-btn:disabled { opacity: 0.35; cursor: default; }
     #launch-btn:not(:disabled):hover { background: #3580ff; }
 
+    #menu {
+      padding-top: max(2rem, env(safe-area-inset-top));
+      padding-bottom: max(2rem, env(safe-area-inset-bottom));
+      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+    }
+
     #back-btn {
       position: fixed;
-      top: 1rem;
-      left: 1rem;
+      top: max(1rem, env(safe-area-inset-top));
+      left: max(1rem, env(safe-area-inset-left));
       z-index: 1000;
       background: rgba(0, 0, 0, 0.6);
       border: 1px solid #555;

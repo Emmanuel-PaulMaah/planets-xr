@@ -1,5 +1,6 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
+﻿import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js';
 import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/webxr/ARButton.js';
+import { USDZExporter } from 'https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/exporters/USDZExporter.js';
 
 // Planet data
 const planetsData = [
@@ -49,14 +50,30 @@ document.getElementById('select-none').addEventListener('click', () => {
   launchBtn.disabled = true;
 });
 
+// --- Device detection ---
+// iOS Safari (and iPadOS, which reports as MacIntel with touch) does not support WebXR immersive-ar.
+const isIOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// Update launch button label so iOS users know what to expect (ARKit / AR Quick Look)
+if (isIOS) launchBtn.textContent = 'View in AR (Quick Look)';
+
 // --- AR launch ---
 const backBtn = document.getElementById('back-btn');
 let cleanup = null;
 
 launchBtn.addEventListener('click', () => {
+  const chosen = planetsData.filter((p) => selected.has(p.name));
+  if (isIOS) {
+    // iOS uses ARKit via AR Quick Look â€” no WebXR, no canvas swap.
+    // The function manages its own overlay UI.
+    startIOSAR(chosen);
+    return;
+  }
   document.getElementById('menu').style.display = 'none';
   backBtn.style.display = 'flex';
-  cleanup = startAR(planetsData.filter((p) => selected.has(p.name)));
+  cleanup = startAR(chosen);
 });
 
 backBtn.addEventListener('click', () => {
@@ -71,6 +88,7 @@ function startAR(planets) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.xr.enabled = true;
+  renderer.domElement.style.touchAction = 'none';
   document.body.appendChild(renderer.domElement);
   const arButton = ARButton.createButton(renderer);
   document.body.appendChild(arButton);
@@ -81,7 +99,7 @@ function startAR(planets) {
   const loader = new THREE.TextureLoader();
   const meshes = [];
 
-  // Scale planets up when viewing fewer — keeps them prominent
+  // Scale planets up when viewing fewer â€” keeps them prominent
   const isFullSystem = planets.length === planetsData.length;
   const minDisplay = 0.12; // minimum visible radius for non-Sun planets
   const scale = isFullSystem ? 1 : Math.min(4, 10 / planets.length);
@@ -148,28 +166,26 @@ function startAR(planets) {
     }
   });
 
-  // Drag-to-move planets on preview screen (touch + mouse)
+  // Drag-to-move planets on preview screen (pointer events)
   let dragTarget = null;
-  let dragDepth = 0;
   const pointer = new THREE.Vector2();
   const dragPlane = new THREE.Plane();
   const intersection = new THREE.Vector3();
+  const canvas = renderer.domElement;
 
-  function getPointer(e) {
-    const x = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-    const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-    pointer.x = (x / window.innerWidth) * 2 - 1;
-    pointer.y = -(y / window.innerHeight) * 2 + 1;
+  function toNDC(e) {
+    pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
   }
 
   function onPointerDown(e) {
     if (renderer.xr.isPresenting) return;
-    getPointer(e);
+    toNDC(e);
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(allMeshes);
     if (hits.length > 0) {
       dragTarget = hits[0].object;
-      // Create a plane facing the camera at the planet's depth
+      canvas.setPointerCapture(e.pointerId);
       dragPlane.setFromNormalAndCoplanarPoint(
         camera.getWorldDirection(new THREE.Vector3()).negate(),
         dragTarget.position
@@ -179,24 +195,24 @@ function startAR(planets) {
 
   function onPointerMove(e) {
     if (!dragTarget || renderer.xr.isPresenting) return;
-    e.preventDefault();
-    getPointer(e);
+    toNDC(e);
     raycaster.setFromCamera(pointer, camera);
     if (raycaster.ray.intersectPlane(dragPlane, intersection)) {
       dragTarget.position.copy(intersection);
     }
   }
 
-  function onPointerUp() {
-    dragTarget = null;
+  function onPointerUp(e) {
+    if (dragTarget) {
+      canvas.releasePointerCapture(e.pointerId);
+      dragTarget = null;
+    }
   }
 
-  renderer.domElement.addEventListener('touchstart', onPointerDown, { passive: true });
-  renderer.domElement.addEventListener('touchmove', onPointerMove, { passive: false });
-  renderer.domElement.addEventListener('touchend', onPointerUp);
-  renderer.domElement.addEventListener('mousedown', onPointerDown);
-  renderer.domElement.addEventListener('mousemove', onPointerMove);
-  renderer.domElement.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
 
   renderer.setAnimationLoop(() => {
     meshes.forEach(({ mesh, speed }) => { mesh.rotation.y += speed; });
@@ -218,4 +234,129 @@ function startAR(planets) {
     arButton.remove();
     window.removeEventListener('resize', onResize);
   };
+}
+
+
+// --- iOS AR Quick Look (ARKit) ---
+// iOS Safari has no WebXR. The platform AR runtime is ARKit, exposed to the web
+// through "AR Quick Look": Safari intercepts a click on an <a rel="ar"> whose
+// href points to a .usdz (or .reality) file and opens the system AR viewer.
+//
+// We build the selected planets in three.js and convert the scene to USDZ on the
+// fly with three.js's USDZExporter, then trigger AR Quick Look. The user then
+// places, scales, and walks around the model with real ARKit world tracking.
+async function startIOSAR(planets) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;' +
+    'justify-content:center;gap:1rem;padding:1rem;text-align:center;' +
+    'background:#0b0d17;color:#fff;font-family:inherit;font-size:1.05rem;z-index:2000;';
+  overlay.innerHTML = '<div>Preparing AR scene…</div>';
+  document.body.appendChild(overlay);
+
+  const restore = (url) => {
+    if (url) URL.revokeObjectURL(url);
+    overlay.remove();
+  };
+
+  try {
+    const scene = new THREE.Scene();
+    const loader = new THREE.TextureLoader();
+    const loadTex = (path) =>
+      new Promise((resolve, reject) => {
+        loader.load(
+          path,
+          (t) => {
+            if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace;
+            else t.encoding = THREE.sRGBEncoding;
+            resolve(t);
+          },
+          undefined,
+          reject
+        );
+      });
+
+    const isFullSystem = planets.length === planetsData.length;
+    const minDisplay = 0.12;
+    const scaleFactor = isFullSystem ? 1 : Math.min(4, 10 / planets.length);
+    const spacing = isFullSystem ? 0.4 : 0.5 * scaleFactor;
+    const totalWidth = (planets.length - 1) * spacing;
+    const startX = -totalWidth / 2;
+
+    for (let i = 0; i < planets.length; i++) {
+      const p = planets[i];
+      const r = isFullSystem ? p.radius : Math.max(p.radius * scaleFactor, minDisplay);
+      const tex = await loadTex(`./assets/${p.texture}`);
+      // USDZExporter only supports MeshStandardMaterial / MeshPhysicalMaterial.
+      const matOpts = { map: tex, roughness: 1, metalness: 0 };
+      if (p.emissive) {
+        matOpts.emissive = new THREE.Color(0xffffff);
+        matOpts.emissiveMap = tex;
+        matOpts.emissiveIntensity = 1;
+      }
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 64, 64),
+        new THREE.MeshStandardMaterial(matOpts)
+      );
+      mesh.position.set(startX + i * spacing, 0, 0);
+      scene.add(mesh);
+
+      if (p.ring) {
+        const ringTex = await loadTex(`./assets/${p.ring}`);
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(r * 1.3, r * 2.2, 64),
+          new THREE.MeshStandardMaterial({
+            map: ringTex,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85,
+            roughness: 1,
+            metalness: 0,
+          })
+        );
+        ring.rotation.x = -Math.PI / 2.5;
+        mesh.add(ring);
+      }
+    }
+
+    const exporter = new USDZExporter();
+    const buffer = await exporter.parse(scene);
+    const blob = new Blob([buffer], { type: 'model/vnd.usdz+zip' });
+    const url = URL.createObjectURL(blob);
+
+    // AR Quick Look anchor: Safari intercepts clicks on <a rel="ar"> with an <img> child.
+    const link = document.createElement('a');
+    link.rel = 'ar';
+    link.href = `${url}#allowsContentScaling=0`;
+    link.style.cssText =
+      'background:#1a6eff;color:#fff;padding:0.9rem 2rem;border-radius:8px;' +
+      'font-size:1.05rem;text-decoration:none;display:inline-flex;align-items:center;gap:0.5rem;';
+    const placeholder = document.createElement('img');
+    placeholder.alt = '';
+    placeholder.style.cssText = 'width:0;height:0;display:none;';
+    link.appendChild(placeholder);
+    link.appendChild(document.createTextNode('Open in AR'));
+
+    const cancel = document.createElement('button');
+    cancel.textContent = 'Cancel';
+    cancel.style.cssText =
+      'background:none;border:1px solid #555;color:#aaa;padding:0.4rem 1rem;' +
+      'border-radius:6px;cursor:pointer;font-size:0.85rem;';
+    cancel.addEventListener('click', () => restore(url));
+
+    overlay.innerHTML = '';
+    const title = document.createElement('div');
+    title.textContent = 'Tap to open in AR Quick Look';
+    overlay.appendChild(title);
+    overlay.appendChild(link);
+    overlay.appendChild(cancel);
+
+    // Dismissing AR Quick Look returns the user here — clean up the overlay.
+    link.addEventListener('click', () => {
+      setTimeout(() => restore(url), 500);
+    });
+  } catch (err) {
+    overlay.innerHTML = `<div>Failed to prepare AR: ${(err && err.message) || err}</div>`;
+    setTimeout(() => restore(), 2500);
+  }
 }
